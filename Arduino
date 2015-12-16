@@ -77,7 +77,7 @@ void loop()
   }
   else          // We scale the steps the stepper motor should do linearly with the integers received, again 10 is arbitrarily chosen
   {
-    if(memoryStepsHelpme + (firstNumberInt*10)>=maximum || memoryStepsCarpe +(secondNumberInt*10) >=maximum)    // If however the total amount of steps exceeds the maxium, the weights go to half their position so they can move again afterwards.
+    if(memoryStepsHelpme + (firstNumberInt*10)>maximum || memoryStepsCarpe +(secondNumberInt*10) >maximum)    // If however the total amount of steps exceeds the maxium, the weights go to half their position so they can move again afterwards.
     {   
       counter=1;                                                    // will inform the motors that they have to go to half their current position.
 
