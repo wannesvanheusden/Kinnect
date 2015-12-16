@@ -1,0 +1,119 @@
+from __future__ import print_function
+import httplib2
+import os
+
+from apiclient import discovery
+import oauth2client
+from oauth2client import client
+from oauth2client import tools
+
+import time
+import serial
+import datetime
+
+memory=0            # These integers are being used as memory to remember the amount 
+memory1=0           # of mails that were in a certain label and then compare them to the new amount
+
+try:
+    import argparse
+    flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
+except ImportError:
+    flags = None
+
+SCOPES = 'https://www.googleapis.com/auth/gmail.readonly'
+CLIENT_SECRET_FILE = 'client_secret.json'
+APPLICATION_NAME = 'Gmail API Python Quickstart'
+
+
+def get_credentials():
+    """Gets valid user credentials from storage.
+
+    If nothing has been stored, or if the stored credentials are invalid,
+    the OAuth2 flow is completed to obtain the new credentials.
+
+    Returns:
+        Credentials, the obtained credential.
+    """
+    home_dir = os.path.expanduser('~')
+    credential_dir = os.path.join(home_dir, '.credentials')
+    if not os.path.exists(credential_dir):
+        os.makedirs(credential_dir)
+    credential_path = os.path.join(credential_dir,
+                                   'gmail-python-quickstart.json')
+
+    store = oauth2client.file.Storage(credential_path)
+    credentials = store.get()
+    if not credentials or credentials.invalid:
+        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
+        flow.user_agent = APPLICATION_NAME
+        if flags:
+            credentials = tools.run_flow(flow, store, flags)
+        else: # Needed only for compatability with Python 2.6
+            credentials = tools.run(flow, store)
+        print('Storing credentials to ' + credential_path)
+    return credentials
+
+while(True):                            # We create an infinite loop that keeps on running de main function untill the programm is stopped
+    time.sleep(10)                      # We set a certain time delay since we only need to check the mailing lists every so often. E-mails don't get sent 
+                                        # every second so there no reason to update it that often. The value of this delay is arbitrary and depends on what we 
+                                        # want to track. For the case of tracking Helpme and Carpe mailing lists, once every four minutes seems enough.
+    def main():             
+        """
+        Shows the basic usage of the Gmail API.
+
+        Creates a Gmail API service object and outputs the amount of emails that 
+        are in a cerain label of the user's Gmail account.
+        """
+        credentials = get_credentials()
+        http = credentials.authorize(httplib2.Http())
+        service = discovery.build('gmail', 'v1', http=http)
+
+        results = service.users().labels().list(userId='me').execute()    
+        labels = results.get('labels', [])                                                                      # gives a list of all the labels
+        results1 = service.users().labels().get(userId='me',id='Label_1',fields='messagesTotal').execute()      # gives the amount of messages in the Carpe label
+        results2 = service.users().labels().get(userId='me',id='Label_2',fields='messagesTotal').execute()      # gives the amount of messages in the Helpme label
+        results3 = service.users().labels().get(userId='me',id='Label_3',fields='messagesTotal').execute()      # gives the amount of messages in the third label
+        if not labels:
+            print('No labels found.')                                                           
+        else:  
+            print(results3)                                          # since we got dictionary elements instead of actual integers, we now split up the value fron the key
+            fieldCarpe, valueCarpe = results1.items()[0]       
+            fieldHelpme, valueHelpme = results2.items()[0]
+
+            global memory                                # We create global variabels that can store the previous amount of emails so that when we update
+            global memory1                               # we can see wheter the amount of mails in a label has changed
+
+            if valueCarpe>memory:                        # If the new value is higher than the old value, then we need to know the difference between the two
+                difference= valueCarpe-memory            # This difference is what we eventually will send to the arduino
+            else:
+                difference=0                              
+
+            if valueHelpme>memory1:
+                difference1= valueHelpme-memory1
+            else:
+                difference1=0
+
+            try:                                        # We try to connect to the arduino using the serial connection between the Raspberry Pi and Arduino
+                arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=.1)  # We got this function from a module we imported called Pyserial  
+                print ("Connecting to /dev/ttyACM0")                  
+            except:
+                print ("Failed to connect to /dev/ttyACM0")                # if we fail to connect to the Arduino, we print the following statement
+
+            try:                                                           # We will try to send something over the serial port
+                now = datetime.datetime.now()                              # We get the current time
+                if(now.hour==24 and now.minute==0):                         # If it is midnight, then we send 'R' to the Arduino which stands for reset
+                    arduino.write('R')
+                    print('reset')
+                else:
+                # We write the two differences to the Arduino as a string, split up by a comma. We do this since the write function of the Pyserial 
+                # module can only send strings and not integers
+                    arduino.write(str(difference)+','+str(difference1))   
+                    time.sleep(2)                                         # give the connection a second to settle
+            except:                                                        # if we fail to send something to the Arduino, we print the following statement
+                print ("Failed to send")                            
+
+            memory=valueCarpe                                              # We now store the values of Carpe and Helpme in the memory so we can compare these
+            memory1=valueHelpme                                            # values with the new values we get in the next loop
+
+    if __name__ == '__main__':
+        main()
